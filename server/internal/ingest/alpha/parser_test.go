@@ -275,6 +275,39 @@ func TestParseTabDelimited(t *testing.T) {
 	}
 }
 
+// TestPlusSuffixReps verifies that reps logged as "N+" (e.g. "5+", meaning
+// "at least 5 reps") are stored as the integer N rather than silently
+// becoming 0. Regression test: previously the strict `\d+` reps regex
+// dropped such lines entirely or parseEuropeanFloat zeroed the value.
+func TestPlusSuffixReps(t *testing.T) {
+	csv := `"Test";"2026-04-08 6:00 h";"0:30 hr"
+"1. Pull-ups · Bodyweight · 5 reps"
+#;KG;REPS;RIR
+1;+0;5+;0
+`
+	sessions, err := Parse(strings.NewReader(csv))
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	if len(sessions) != 1 || len(sessions[0].Exercises) != 1 || len(sessions[0].Exercises[0].Sets) != 1 {
+		t.Fatalf("expected 1 session/exercise/set, got %+v", sessions)
+	}
+	set := sessions[0].Exercises[0].Sets[0]
+	if set.Reps != 5 {
+		t.Errorf("reps = %d, want 5 (5+ should be stored as 5)", set.Reps)
+	}
+}
+
+// TestPlusSuffixRIR verifies that RIR logged as "N+" is stored as N.
+// Same root cause as TestPlusSuffixReps: parseEuropeanFloat used to fail
+// on a trailing "+" and return 0, masking the actual value.
+func TestPlusSuffixRIR(t *testing.T) {
+	got := parseEuropeanFloat("5+")
+	if got != 5 {
+		t.Errorf("parseEuropeanFloat(5+) = %f, want 5", got)
+	}
+}
+
 // TestSplitExerciseNameEquipment verifies name/equipment splitting from the combined field.
 func TestSplitExerciseNameEquipment(t *testing.T) {
 	name, equip := splitExerciseNameEquipment("Hack Squats · Machine")

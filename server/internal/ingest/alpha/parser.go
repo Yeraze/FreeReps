@@ -22,7 +22,8 @@ var (
 	exerciseHeaderRe = regexp.MustCompile(`^"(\d+)\.\s+(.+?)\s+·\s+(\d+)\s+reps([^"]*)"(?:;"(.+)")?$`)
 
 	// setDataRe matches: 1;115;8;1
-	setDataRe = regexp.MustCompile(`^(\d+);(.+);(\d+);(.+)$`)
+	// Reps may have a trailing "+" (e.g. "8+") indicating "at least N reps".
+	setDataRe = regexp.MustCompile(`^(\d+);(.+);(\d+\+?);(.+)$`)
 
 	// warmupRe matches: WU1 · 37,5 kg · 9 reps
 	warmupRe = regexp.MustCompile(`WU(\d+)\s+·\s+(.+?)\s+kg\s+·\s+(\d+)\s+reps`)
@@ -117,7 +118,7 @@ func Parse(r io.Reader) ([]models.AlphaSession, error) {
 			}
 			setNum, _ := strconv.Atoi(m[1])
 			weight, isBW := parseWeight(m[2])
-			reps, _ := strconv.Atoi(m[3])
+			reps, _ := strconv.Atoi(strings.TrimSuffix(m[3], "+"))
 			rir := parseEuropeanFloat(m[4])
 
 			currentExercise.Sets = append(currentExercise.Sets, models.AlphaSet{
@@ -205,9 +206,12 @@ func parseWeight(s string) (float64, bool) {
 }
 
 // parseEuropeanFloat converts a European decimal string to float64.
-// "102,5" -> 102.5, "0,5" -> 0.5
+// "102,5" -> 102.5, "0,5" -> 0.5. A trailing "+" (e.g. "5+", meaning
+// "at least 5") is stripped so the numeric part is preserved instead of
+// being silently lost to a parse error.
 func parseEuropeanFloat(s string) float64 {
 	s = strings.TrimSpace(s)
+	s = strings.TrimSuffix(s, "+")
 	s = strings.ReplaceAll(s, ",", ".")
 	f, _ := strconv.ParseFloat(s, 64)
 	return f
