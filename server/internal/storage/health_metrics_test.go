@@ -70,6 +70,67 @@ func TestDedupCTE(t *testing.T) {
 	}
 }
 
+// TestBuildMetricStatsQueryCumulative verifies that GetMetricStats uses SUM
+// for cumulative metrics (step_count, active_energy, distance_*, etc.) instead
+// of AVG. HAE emits per-second rate samples for these, so AVG over a day
+// returns the wrong value (e.g. ~0.6 instead of ~3215 for step_count).
+func TestBuildMetricStatsQueryCumulative(t *testing.T) {
+	cumulative := []string{
+		"step_count",
+		"active_energy",
+		"basal_energy_burned",
+		"apple_exercise_time",
+		"apple_move_time",
+		"apple_stand_time",
+		"flights_climbed",
+		"push_count",
+		"swimming_stroke_count",
+		"distance_walking_running",
+		"distance_cycling",
+		"distance_swimming",
+		"distance_wheelchair",
+		"distance_downhill_snow_sports",
+	}
+	for _, metric := range cumulative {
+		t.Run(metric, func(t *testing.T) {
+			sql := buildMetricStatsQuery(metric, nil)
+			if !strings.Contains(sql, "SUM(COALESCE(qty, avg_val))") {
+				t.Errorf("expected SUM aggregate for cumulative metric %q, got:\n%s", metric, sql)
+			}
+			if strings.Contains(sql, "AVG(COALESCE(qty, avg_val))") {
+				t.Errorf("did not expect AVG aggregate for cumulative metric %q, got:\n%s", metric, sql)
+			}
+			// MIN/MAX/STDDEV/COUNT are still emitted unchanged.
+			for _, want := range []string{
+				"MIN(COALESCE(qty, min_val))",
+				"MAX(COALESCE(qty, max_val))",
+				"STDDEV_POP(COALESCE(qty, avg_val))",
+				"COUNT(*)",
+			} {
+				if !strings.Contains(sql, want) {
+					t.Errorf("expected %q in stats query for %q, got:\n%s", want, metric, sql)
+				}
+			}
+		})
+	}
+}
+
+// TestBuildMetricStatsQueryNonCumulative verifies that non-cumulative metrics
+// (heart_rate, body_mass, etc.) still use AVG as before.
+func TestBuildMetricStatsQueryNonCumulative(t *testing.T) {
+	for _, metric := range []string{"heart_rate", "body_mass", "blood_pressure_systolic", "respiratory_rate"} {
+		t.Run(metric, func(t *testing.T) {
+			sql := buildMetricStatsQuery(metric, nil)
+			if !strings.Contains(sql, "AVG(COALESCE(qty, avg_val))") {
+				t.Errorf("expected AVG aggregate for non-cumulative metric %q, got:\n%s", metric, sql)
+			}
+			if strings.Contains(sql, "SUM(COALESCE(qty, avg_val))") {
+				t.Errorf("did not expect SUM aggregate for non-cumulative metric %q, got:\n%s", metric, sql)
+			}
+		})
+	}
+}
+
 // TestDedupCTEMultiMetric verifies the multi-metric CTE partitions by both
 // metric_name and time bucket, preventing cross-metric deduplication.
 func TestDedupCTEMultiMetric(t *testing.T) {

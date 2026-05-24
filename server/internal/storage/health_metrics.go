@@ -279,17 +279,32 @@ type MetricStats struct {
 	Count  int64    `json:"count"`
 }
 
-// GetMetricStats returns aggregate statistics for a metric over a time range.
-func (db *DB) GetMetricStats(ctx context.Context, metricName string, start, end time.Time, userID int) (*MetricStats, error) {
-	priorities := db.ResolveSourcePriorityForMetric(ctx, userID, metricName)
+// buildMetricStatsQuery returns the SQL for GetMetricStats. For cumulative
+// metrics (e.g. step_count, active_energy) the headline aggregate is SUM over
+// the range; for all others it is AVG. MIN/MAX/STDDEV/COUNT are unchanged
+// (still useful for cumulative — e.g. max single-bin value, sample count).
+// Mirrors the cumulativeMetrics branching already used by GetTimeSeries and
+// GetCorrelation.
+func buildMetricStatsQuery(metricName string, priorities []string) string {
+	agg := "AVG"
+	if cumulativeMetrics[metricName] {
+		agg = "SUM"
+	}
 	cte := dedupCTE(priorities, "$1", "$2", "$3", "$4")
-	query := fmt.Sprintf(
-		`%sSELECT AVG(COALESCE(qty, avg_val)),
+	return fmt.Sprintf(
+		`%sSELECT %s(COALESCE(qty, avg_val)),
 		        MIN(COALESCE(qty, min_val)),
 		        MAX(COALESCE(qty, max_val)),
 		        STDDEV_POP(COALESCE(qty, avg_val)),
 		        COUNT(*)
-		 FROM deduped WHERE rn = 1`, cte)
+		 FROM deduped WHERE rn = 1`, cte, agg)
+}
+
+// GetMetricStats returns aggregate statistics for a metric over a time range.
+// The "avg" field holds a SUM for cumulative metrics; see buildMetricStatsQuery.
+func (db *DB) GetMetricStats(ctx context.Context, metricName string, start, end time.Time, userID int) (*MetricStats, error) {
+	priorities := db.ResolveSourcePriorityForMetric(ctx, userID, metricName)
+	query := buildMetricStatsQuery(metricName, priorities)
 	row := db.Pool.QueryRow(ctx, query, metricName, start, end, userID)
 
 	stats := &MetricStats{Metric: metricName}
