@@ -18,6 +18,16 @@ const PRESETS = [
     x: "apple_exercise_time",
     y: "heart_rate_variability",
   },
+  {
+    label: "Glucose vs HRV",
+    x: "blood_glucose",
+    y: "heart_rate_variability",
+  },
+  {
+    label: "Glucose vs RHR",
+    x: "blood_glucose",
+    y: "resting_heart_rate",
+  },
 ];
 
 import { daysFromRange, formatDateLabel, type TimeRange } from "../utils/timeRange";
