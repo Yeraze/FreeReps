@@ -199,6 +199,17 @@ func generateHealthMetrics(rng *rand.Rand, start, end time.Time) []models.Health
 			Qty:        floatPtr(math.Round(spo2*1000) / 1000),
 		})
 
+		// Blood glucose — fasting morning reading (mg/dL)
+		bg := 80.0 + rng.Float64()*25
+		rows = append(rows, models.HealthMetricRow{
+			Time:       d.Add(7 * time.Hour),
+			UserID:     userID,
+			MetricName: "blood_glucose",
+			Source:     source,
+			Units:      "mg/dL",
+			Qty:        floatPtr(math.Round(bg*10) / 10),
+		})
+
 		// Respiratory rate — daily
 		rr := 13.0 + rng.Float64()*4
 		rows = append(rows, models.HealthMetricRow{
