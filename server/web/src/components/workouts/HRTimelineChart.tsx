@@ -3,6 +3,7 @@ import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { WorkoutHR } from "../../api";
 import AutoSizeUplot from "../AutoSizeUplot";
+import { axisValues24h } from "../../utils/chartFormat";
 
 // HR Zone boundaries (bpm) and colors
 const ZONES = [
@@ -43,11 +44,7 @@ export default function HRTimelineChart({ hrData }: Props) {
           stroke: "#52525b",
           grid: { stroke: "#27272a", width: 1 },
           ticks: { stroke: "#27272a" },
-          values: (_u: uPlot, vals: number[]) =>
-            vals.map((v) => {
-              const d = new Date(v * 1000);
-              return `${d.getHours()}:${d.getMinutes().toString().padStart(2, "0")}`;
-            }),
+          values: axisValues24h,
         },
         {
           stroke: "#52525b",
@@ -57,7 +54,7 @@ export default function HRTimelineChart({ hrData }: Props) {
           labelSize: 14,
         },
       ],
-      scales: { x: { time: false } },
+      scales: { x: { time: true } },
       cursor: { drag: { x: true, y: false } },
       hooks: {
         draw: [
