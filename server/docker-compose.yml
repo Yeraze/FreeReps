@@ -5,8 +5,10 @@ services:
       POSTGRES_DB: freereps
       POSTGRES_USER: freereps
       POSTGRES_PASSWORD: freereps
-    ports:
-      - "5432:5432"
+      TZ: America/New_York
+    container_name: freereps_db
+    networks:
+      - default
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -17,14 +19,17 @@ services:
 
   app:
     build: .
-    ports:
-      - "8080:8080"
+    networks:
+      - default
+      - npm
+    container_name: freereps_web
     environment:
-      FREEREPS_DB_HOST: db
+      FREEREPS_DB_HOST: freereps_db
       FREEREPS_DB_PORT: "5432"
       FREEREPS_DB_NAME: freereps
       FREEREPS_DB_USER: freereps
       FREEREPS_DB_PASSWORD: freereps
+      TZ: America/New_York
     depends_on:
       db:
         condition: service_healthy
@@ -33,3 +38,7 @@ services:
 
 volumes:
   pgdata:
+
+networks:
+  npm:
+    external: true
