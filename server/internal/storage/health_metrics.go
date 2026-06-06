@@ -37,7 +37,23 @@ func sourcePriorityCaseSQL(priorities []string) string {
 // 5-minute granularity using source priority. The CTE selects all columns plus
 // a row number (rn) partitioned by 5-minute time buckets. Callers should filter
 // with "WHERE rn = 1" to keep only the highest-priority source per bucket.
-func dedupCTE(priorities []string, metricParam, startParam, endParam, userIDParam string) string {
+//
+// If isCumulative is true, the CTE emits a constant rn=1 instead of an actual
+// ROW_NUMBER, so callers' "WHERE rn = 1" predicate is a no-op and every row is
+// retained. The 5-minute dedup is intended for cross-source contention (Oura
+// vs Apple Watch vs HAE on the same wrist-moment); for cumulative metrics like
+// step_count, HAE emits per-second rate samples (~11K rows/day) that all
+// legitimately stack inside the same 5-minute bucket. Filtering rn=1 would
+// drop ~99% of them and collapse daily totals to ~1% of reality.
+func dedupCTE(priorities []string, metricParam, startParam, endParam, userIDParam string, isCumulative bool) string {
+	if isCumulative {
+		return fmt.Sprintf(
+			`WITH deduped AS (
+				SELECT *, 1 AS rn
+				FROM health_metrics
+				WHERE metric_name = %s AND time >= %s AND time < %s AND user_id = %s
+			) `, metricParam, startParam, endParam, userIDParam)
+	}
 	priorityExpr := sourcePriorityCaseSQL(priorities)
 	return fmt.Sprintf(
 		`WITH deduped AS (
@@ -176,7 +192,7 @@ func (db *DB) GetTimeSeries(ctx context.Context, metricName string, start, end t
 		aggFunc = "SUM"
 	}
 	priorities := db.ResolveSourcePriorityForMetric(ctx, userID, metricName)
-	cte := dedupCTE(priorities, "$2", "$3", "$4", "$5")
+	cte := dedupCTE(priorities, "$2", "$3", "$4", "$5", cumulativeMetrics[metricName])
 	query := fmt.Sprintf(
 		`%sSELECT time_bucket($1::interval, time) AS bucket,
 		        %s(COALESCE(qty, avg_val)) AS avg_val,
@@ -279,17 +295,32 @@ type MetricStats struct {
 	Count  int64    `json:"count"`
 }
 
-// GetMetricStats returns aggregate statistics for a metric over a time range.
-func (db *DB) GetMetricStats(ctx context.Context, metricName string, start, end time.Time, userID int) (*MetricStats, error) {
-	priorities := db.ResolveSourcePriorityForMetric(ctx, userID, metricName)
-	cte := dedupCTE(priorities, "$1", "$2", "$3", "$4")
-	query := fmt.Sprintf(
-		`%sSELECT AVG(COALESCE(qty, avg_val)),
+// buildMetricStatsQuery returns the SQL for GetMetricStats. For cumulative
+// metrics (e.g. step_count, active_energy) the headline aggregate is SUM over
+// the range; for all others it is AVG. MIN/MAX/STDDEV/COUNT are unchanged
+// (still useful for cumulative — e.g. max single-bin value, sample count).
+// Mirrors the cumulativeMetrics branching already used by GetTimeSeries and
+// GetCorrelation.
+func buildMetricStatsQuery(metricName string, priorities []string) string {
+	agg := "AVG"
+	if cumulativeMetrics[metricName] {
+		agg = "SUM"
+	}
+	cte := dedupCTE(priorities, "$1", "$2", "$3", "$4", cumulativeMetrics[metricName])
+	return fmt.Sprintf(
+		`%sSELECT %s(COALESCE(qty, avg_val)),
 		        MIN(COALESCE(qty, min_val)),
 		        MAX(COALESCE(qty, max_val)),
 		        STDDEV_POP(COALESCE(qty, avg_val)),
 		        COUNT(*)
-		 FROM deduped WHERE rn = 1`, cte)
+		 FROM deduped WHERE rn = 1`, cte, agg)
+}
+
+// GetMetricStats returns aggregate statistics for a metric over a time range.
+// The "avg" field holds a SUM for cumulative metrics; see buildMetricStatsQuery.
+func (db *DB) GetMetricStats(ctx context.Context, metricName string, start, end time.Time, userID int) (*MetricStats, error) {
+	priorities := db.ResolveSourcePriorityForMetric(ctx, userID, metricName)
+	query := buildMetricStatsQuery(metricName, priorities)
 	row := db.Pool.QueryRow(ctx, query, metricName, start, end, userID)
 
 	stats := &MetricStats{Metric: metricName}
@@ -327,19 +358,24 @@ func (db *DB) GetCorrelation(ctx context.Context, xMetric, yMetric string, start
 	// For correlation, use the priority for the X metric's category.
 	priorities := db.ResolveSourcePriorityForMetric(ctx, userID, xMetric)
 	priorityExpr := sourcePriorityCaseSQL(priorities)
+	// For cumulative metrics, skip the 5-minute dedup ROW_NUMBER (emit constant
+	// rn=1) so high-frequency single-source samples are not collapsed. See
+	// dedupCTE for the full rationale.
+	xRnExpr := fmt.Sprintf("ROW_NUMBER() OVER (PARTITION BY time_bucket('5 minutes', time) ORDER BY %s)", priorityExpr)
+	if cumulativeMetrics[xMetric] {
+		xRnExpr = "1"
+	}
+	yRnExpr := fmt.Sprintf("ROW_NUMBER() OVER (PARTITION BY time_bucket('5 minutes', time) ORDER BY %s)", priorityExpr)
+	if cumulativeMetrics[yMetric] {
+		yRnExpr = "1"
+	}
 	query := fmt.Sprintf(
 		`WITH x_deduped AS (
-			SELECT *, ROW_NUMBER() OVER (
-				PARTITION BY time_bucket('5 minutes', time)
-				ORDER BY %s
-			) AS rn
+			SELECT *, %s AS rn
 			FROM health_metrics
 			WHERE metric_name = $2 AND time >= $4 AND time < $5 AND user_id = $6
 		), y_deduped AS (
-			SELECT *, ROW_NUMBER() OVER (
-				PARTITION BY time_bucket('5 minutes', time)
-				ORDER BY %s
-			) AS rn
+			SELECT *, %s AS rn
 			FROM health_metrics
 			WHERE metric_name = $3 AND time >= $4 AND time < $5 AND user_id = $6
 		), x AS (
@@ -355,7 +391,7 @@ func (db *DB) GetCorrelation(ctx context.Context, xMetric, yMetric string, start
 		)
 		SELECT x.bucket, x.val, y.val
 		FROM x JOIN y ON x.bucket = y.bucket
-		ORDER BY x.bucket ASC`, priorityExpr, priorityExpr, xAgg, yAgg)
+		ORDER BY x.bucket ASC`, xRnExpr, yRnExpr, xAgg, yAgg)
 	rows, err := db.Pool.Query(ctx, query,
 		bucket, xMetric, yMetric, start, end, userID)
 	if err != nil {
