@@ -187,15 +187,27 @@ func generateHealthMetrics(rng *rand.Rand, start, end time.Time) []models.Health
 			})
 		}
 
-		// Blood oxygen — daily
-		spo2 := 96.0 + rng.Float64()*3
+		// Blood oxygen — daily stored as fraction (0-1) to match Apple Health convention.
+		// display_multiplier=100 converts to percentage for display.
+		spo2 := (96.0 + rng.Float64()*3) / 100
 		rows = append(rows, models.HealthMetricRow{
 			Time:       d.Add(3 * time.Hour),
 			UserID:     userID,
 			MetricName: "blood_oxygen_saturation",
 			Source:     source,
 			Units:      "%",
-			Qty:        floatPtr(math.Round(spo2*10) / 10),
+			Qty:        floatPtr(math.Round(spo2*1000) / 1000),
+		})
+
+		// Blood glucose — fasting morning reading (mg/dL)
+		bg := 80.0 + rng.Float64()*25
+		rows = append(rows, models.HealthMetricRow{
+			Time:       d.Add(7 * time.Hour),
+			UserID:     userID,
+			MetricName: "blood_glucose",
+			Source:     source,
+			Units:      "mg/dL",
+			Qty:        floatPtr(math.Round(bg*10) / 10),
 		})
 
 		// Respiratory rate — daily

@@ -49,8 +49,8 @@ func TestGenerateHealthMetrics(t *testing.T) {
 		t.Errorf("weight_body_mass count = %d, want ~13", c)
 	}
 
-	// Daily metrics: blood oxygen, respiratory rate, HRV
-	for _, name := range []string{"blood_oxygen_saturation", "respiratory_rate", "heart_rate_variability"} {
+	// Daily metrics: blood oxygen, respiratory rate, HRV, blood glucose
+	for _, name := range []string{"blood_oxygen_saturation", "respiratory_rate", "heart_rate_variability", "blood_glucose"} {
 		if c := counts[name]; c != daysBack {
 			t.Errorf("%s count = %d, want %d", name, c, daysBack)
 		}
