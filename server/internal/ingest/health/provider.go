@@ -103,11 +103,61 @@ func (p *Provider) Ingest(ctx context.Context, payload *models.HealthPayload, us
 	return result, nil
 }
 
+// haeNutritionAliases maps short metric names sent by Health Auto Export
+// to the canonical dietary_* names used in the allowlist.
+var haeNutritionAliases = map[string]string{
+	"biotin":              "dietary_biotin",
+	"caffeine":            "dietary_caffeine",
+	"calcium":             "dietary_calcium",
+	"carbohydrates":       "dietary_carbohydrates",
+	"chloride":            "dietary_chloride",
+	"cholesterol":         "dietary_cholesterol",
+	"chromium":            "dietary_chromium",
+	"copper":              "dietary_copper",
+	"energy_consumed":     "dietary_energy_consumed",
+	"fat_monounsaturated": "dietary_fat_monounsaturated",
+	"fat_polyunsaturated": "dietary_fat_polyunsaturated",
+	"fat_saturated":       "dietary_fat_saturated",
+	"total_fat":           "dietary_fat_total",
+	"fat_total":           "dietary_fat_total",
+	"fiber":               "dietary_fiber",
+	"folate":              "dietary_folate",
+	"iodine":              "dietary_iodine",
+	"iron":                "dietary_iron",
+	"magnesium":           "dietary_magnesium",
+	"manganese":           "dietary_manganese",
+	"molybdenum":          "dietary_molybdenum",
+	"niacin":              "dietary_niacin",
+	"pantothenic_acid":    "dietary_pantothenic_acid",
+	"phosphorus":          "dietary_phosphorus",
+	"potassium":           "dietary_potassium",
+	"protein":             "dietary_protein",
+	"riboflavin":          "dietary_riboflavin",
+	"selenium":            "dietary_selenium",
+	"sodium":              "dietary_sodium",
+	"sugar":               "dietary_sugar",
+	"thiamin":             "dietary_thiamin",
+	"vitamin_a":           "dietary_vitamin_a",
+	"vitamin_b12":         "dietary_vitamin_b12",
+	"vitamin_b6":          "dietary_vitamin_b6",
+	"vitamin_c":           "dietary_vitamin_c",
+	"vitamin_d":           "dietary_vitamin_d",
+	"vitamin_e":           "dietary_vitamin_e",
+	"vitamin_k":           "dietary_vitamin_k",
+	"water":               "dietary_water",
+	"zinc":                "dietary_zinc",
+}
+
 func (p *Provider) processMetrics(ctx context.Context, metrics []models.HealthMetric, userID int, result *ingest.Result) error {
 	var healthRows []models.HealthMetricRow
 	rejectedSet := map[string]bool{}
 
 	for _, m := range metrics {
+		// Normalize HAE short nutrition names to canonical dietary_* names.
+		if canonical, ok := haeNutritionAliases[m.Name]; ok {
+			m.Name = canonical
+		}
+
 		// Check allowlist
 		allowed, err := p.db.IsMetricAllowed(ctx, m.Name)
 		if err != nil {
