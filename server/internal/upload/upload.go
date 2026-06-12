@@ -433,6 +433,13 @@ var TCPMetrics = []TCPMetric{
 	{Name: "active_energy", Aggregate: true},
 	// "basal_energy_burned" — skipped: ~8 MB/day of estimated BMR data, not useful
 	{Name: "apple_exercise_time", Aggregate: true},
+	{Name: "dietary_protein", Aggregate: true},
+	{Name: "dietary_energy_consumed", Aggregate: true},
+	{Name: "dietary_carbohydrates", Aggregate: true},
+	{Name: "dietary_fat_total", Aggregate: true},
+	{Name: "dietary_sugar", Aggregate: true},
+	{Name: "dietary_fiber", Aggregate: true},
+	{Name: "dietary_sodium", Aggregate: true},
 }
 
 // RunTCP queries the HAE TCP server for health data and forwards it to FreeReps.
