@@ -14,6 +14,10 @@ var cumulativeMetrics = []string{
 	"distance_swimming", "distance_wheelchair", "flights_climbed",
 	"apple_move_time", "apple_stand_time", "push_count",
 	"swimming_stroke_count", "distance_downhill_snow_sports",
+	"dietary_energy_consumed", "dietary_protein", "dietary_carbohydrates",
+	"dietary_fat_total", "dietary_fiber", "dietary_sugar",
+	"dietary_sodium", "dietary_cholesterol", "dietary_fat_saturated",
+	"dietary_caffeine", "dietary_water",
 }
 
 func (h *handlers) dailySummary(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
