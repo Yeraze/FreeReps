@@ -115,6 +115,25 @@ func TestBuildMetricStatsQueryCumulative(t *testing.T) {
 	}
 }
 
+// TestNutritionMetricsCumulative verifies that dietary_* metrics are recognized
+// as cumulative, so they use SUM and skip the 5-minute dedup.
+func TestNutritionMetricsCumulative(t *testing.T) {
+	for _, metric := range []string{"dietary_protein", "dietary_fiber", "dietary_carbohydrates", "dietary_fat_total", "dietary_energy_consumed"} {
+		t.Run(metric, func(t *testing.T) {
+			if !isCumulative(metric) {
+				t.Errorf("expected %q to be cumulative", metric)
+			}
+			sql := buildMetricStatsQuery(metric, nil)
+			if !strings.Contains(sql, "SUM(COALESCE(qty, avg_val))") {
+				t.Errorf("expected SUM aggregate for nutrition metric %q, got:\n%s", metric, sql)
+			}
+			if !strings.Contains(sql, "1 AS rn") {
+				t.Errorf("expected '1 AS rn' (no dedup) for nutrition metric %q, got:\n%s", metric, sql)
+			}
+		})
+	}
+}
+
 // TestBuildMetricStatsQueryNonCumulative verifies that non-cumulative metrics
 // (heart_rate, body_mass, etc.) still use AVG as before.
 func TestBuildMetricStatsQueryNonCumulative(t *testing.T) {
@@ -192,14 +211,15 @@ func TestDedupCTECumulativeFlag(t *testing.T) {
 	}
 }
 
-// TestDedupCTEMultiMetric verifies the multi-metric CTE partitions by both
-// metric_name and time bucket, preventing cross-metric deduplication.
+// TestDedupCTEMultiMetric verifies the multi-metric CTE emits a constant rn=1
+// (no dedup), since all callers pass only cumulative metrics which should
+// retain every row.
 func TestDedupCTEMultiMetric(t *testing.T) {
 	cte := dedupCTEMultiMetric([]string{"Oura", ""}, "$1", "$2,$3")
 
 	checks := []string{
 		"WITH deduped AS",
-		"PARTITION BY metric_name, time_bucket('5 minutes', time)",
+		"1 AS rn",
 		"user_id = $1",
 		"metric_name IN ($2,$3)",
 	}
@@ -208,5 +228,9 @@ func TestDedupCTEMultiMetric(t *testing.T) {
 		if !strings.Contains(cte, check) {
 			t.Errorf("dedupCTEMultiMetric missing %q in:\n%s", check, cte)
 		}
+	}
+
+	if strings.Contains(cte, "ROW_NUMBER()") {
+		t.Errorf("dedupCTEMultiMetric should not emit ROW_NUMBER for cumulative metrics, got:\n%s", cte)
 	}
 }

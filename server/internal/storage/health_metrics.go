@@ -67,18 +67,17 @@ func dedupCTE(priorities []string, metricParam, startParam, endParam, userIDPara
 }
 
 // dedupCTEMultiMetric returns a dedup CTE for queries that span multiple metrics
-// (e.g. GetDailySums). Partitions by metric_name in addition to time bucket.
+// (e.g. GetDailySums). All callers pass only cumulative metrics, so we emit a
+// constant rn=1 to retain every row — the same logic dedupCTE uses when
+// isCumulative is true. This prevents collapsing legitimate same-timestamp
+// samples (e.g. multiple nutrition entries at midnight from Cronometer).
 func dedupCTEMultiMetric(priorities []string, userIDParam, inClause string) string {
-	priorityExpr := sourcePriorityCaseSQL(priorities)
 	return fmt.Sprintf(
 		`WITH deduped AS (
-			SELECT *, ROW_NUMBER() OVER (
-				PARTITION BY metric_name, time_bucket('5 minutes', time)
-				ORDER BY %s
-			) AS rn
+			SELECT *, 1 AS rn
 			FROM health_metrics
 			WHERE user_id = %s AND metric_name IN (%s)
-		) `, priorityExpr, userIDParam, inClause)
+		) `, userIDParam, inClause)
 }
 
 // cumulativeMetrics are metrics that should be summed (not averaged) when aggregating.
