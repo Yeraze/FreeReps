@@ -99,6 +99,13 @@ var cumulativeMetrics = map[string]bool{
 	"distance_downhill_snow_sports": true,
 }
 
+func isCumulative(metric string) bool {
+	if cumulativeMetrics[metric] {
+		return true
+	}
+	return strings.HasPrefix(metric, "dietary_")
+}
+
 // maxParamsPerBatch is the PostgreSQL extended protocol parameter limit (65535)
 // divided by 12 parameters per row, with headroom.
 const maxRowsPerBatch = 5000
@@ -188,11 +195,11 @@ func (db *DB) GetLatestMetrics(ctx context.Context, userID int) ([]models.Health
 // use SUM; all others use AVG.
 func (db *DB) GetTimeSeries(ctx context.Context, metricName string, start, end time.Time, bucketSize string, userID int) ([]TimeSeriesPoint, error) {
 	aggFunc := "AVG"
-	if cumulativeMetrics[metricName] {
+	if isCumulative(metricName) {
 		aggFunc = "SUM"
 	}
 	priorities := db.ResolveSourcePriorityForMetric(ctx, userID, metricName)
-	cte := dedupCTE(priorities, "$2", "$3", "$4", "$5", cumulativeMetrics[metricName])
+	cte := dedupCTE(priorities, "$2", "$3", "$4", "$5", isCumulative(metricName))
 	query := fmt.Sprintf(
 		`%sSELECT time_bucket($1::interval, time) AS bucket,
 		        %s(COALESCE(qty, avg_val)) AS avg_val,
@@ -303,10 +310,10 @@ type MetricStats struct {
 // GetCorrelation.
 func buildMetricStatsQuery(metricName string, priorities []string) string {
 	agg := "AVG"
-	if cumulativeMetrics[metricName] {
+	if isCumulative(metricName) {
 		agg = "SUM"
 	}
-	cte := dedupCTE(priorities, "$1", "$2", "$3", "$4", cumulativeMetrics[metricName])
+	cte := dedupCTE(priorities, "$1", "$2", "$3", "$4", isCumulative(metricName))
 	return fmt.Sprintf(
 		`%sSELECT %s(COALESCE(qty, avg_val)),
 		        MIN(COALESCE(qty, min_val)),
@@ -348,11 +355,11 @@ type CorrelationResult struct {
 // Uses SUM for cumulative metrics, AVG for all others.
 func (db *DB) GetCorrelation(ctx context.Context, xMetric, yMetric string, start, end time.Time, bucket string, userID int) (*CorrelationResult, error) {
 	xAgg := "AVG"
-	if cumulativeMetrics[xMetric] {
+	if isCumulative(xMetric) {
 		xAgg = "SUM"
 	}
 	yAgg := "AVG"
-	if cumulativeMetrics[yMetric] {
+	if isCumulative(yMetric) {
 		yAgg = "SUM"
 	}
 	// For correlation, use the priority for the X metric's category.
@@ -362,11 +369,11 @@ func (db *DB) GetCorrelation(ctx context.Context, xMetric, yMetric string, start
 	// rn=1) so high-frequency single-source samples are not collapsed. See
 	// dedupCTE for the full rationale.
 	xRnExpr := fmt.Sprintf("ROW_NUMBER() OVER (PARTITION BY time_bucket('5 minutes', time) ORDER BY %s)", priorityExpr)
-	if cumulativeMetrics[xMetric] {
+	if isCumulative(xMetric) {
 		xRnExpr = "1"
 	}
 	yRnExpr := fmt.Sprintf("ROW_NUMBER() OVER (PARTITION BY time_bucket('5 minutes', time) ORDER BY %s)", priorityExpr)
-	if cumulativeMetrics[yMetric] {
+	if isCumulative(yMetric) {
 		yRnExpr = "1"
 	}
 	query := fmt.Sprintf(
