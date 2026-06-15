@@ -1,0 +1,2 @@
+-- Down migration is a no-op: deleted duplicate rows cannot be restored.
+-- The unique indexes from migration 024 remain in place.
