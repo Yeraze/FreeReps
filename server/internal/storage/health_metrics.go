@@ -38,23 +38,21 @@ func sourcePriorityCaseSQL(priorities []string) string {
 // a row number (rn) partitioned by 5-minute time buckets. Callers should filter
 // with "WHERE rn = 1" to keep only the highest-priority source per bucket.
 //
-// If isCumulative is true, the CTE emits a constant rn=1 instead of an actual
-// ROW_NUMBER, so callers' "WHERE rn = 1" predicate is a no-op and every row is
-// retained. The 5-minute dedup is intended for cross-source contention (Oura
-// vs Apple Watch vs HAE on the same wrist-moment); for cumulative metrics like
-// step_count, HAE emits per-second rate samples (~11K rows/day) that all
-// legitimately stack inside the same 5-minute bucket. Filtering rn=1 would
-// drop ~99% of them and collapse daily totals to ~1% of reality.
+// For cumulative metrics (step_count, active_energy, dietary_*), the CTE uses
+// DENSE_RANK by source priority instead of ROW_NUMBER by time bucket. This
+// keeps ALL rows from the highest-priority source (preserving the many
+// per-second HAE samples that legitimately stack) while excluding rows from
+// lower-priority sources that would otherwise double-count the same activity.
 func dedupCTE(priorities []string, metricParam, startParam, endParam, userIDParam string, isCumulative bool) string {
+	priorityExpr := sourcePriorityCaseSQL(priorities)
 	if isCumulative {
 		return fmt.Sprintf(
 			`WITH deduped AS (
-				SELECT *, 1 AS rn
+				SELECT *, DENSE_RANK() OVER (ORDER BY %s) AS rn
 				FROM health_metrics
 				WHERE metric_name = %s AND time >= %s AND time < %s AND user_id = %s
-			) `, metricParam, startParam, endParam, userIDParam)
+			) `, priorityExpr, metricParam, startParam, endParam, userIDParam)
 	}
-	priorityExpr := sourcePriorityCaseSQL(priorities)
 	return fmt.Sprintf(
 		`WITH deduped AS (
 			SELECT *, ROW_NUMBER() OVER (
@@ -66,18 +64,18 @@ func dedupCTE(priorities []string, metricParam, startParam, endParam, userIDPara
 		) `, priorityExpr, metricParam, startParam, endParam, userIDParam)
 }
 
-// dedupCTEMultiMetric returns a dedup CTE for queries that span multiple metrics
-// (e.g. GetDailySums). All callers pass only cumulative metrics, so we emit a
-// constant rn=1 to retain every row — the same logic dedupCTE uses when
-// isCumulative is true. This prevents collapsing legitimate same-timestamp
-// samples (e.g. multiple nutrition entries at midnight from Cronometer).
+// dedupCTEMultiMetric returns a dedup CTE for queries that span multiple
+// metrics (e.g. GetDailySums). Uses DENSE_RANK per metric so that each metric
+// keeps all rows from its highest-priority source while excluding lower-priority
+// sources that would double-count cumulative values.
 func dedupCTEMultiMetric(priorities []string, userIDParam, inClause string) string {
+	priorityExpr := sourcePriorityCaseSQL(priorities)
 	return fmt.Sprintf(
 		`WITH deduped AS (
-			SELECT *, 1 AS rn
+			SELECT *, DENSE_RANK() OVER (PARTITION BY metric_name ORDER BY %s) AS rn
 			FROM health_metrics
 			WHERE user_id = %s AND metric_name IN (%s)
-		) `, userIDParam, inClause)
+		) `, priorityExpr, userIDParam, inClause)
 }
 
 // cumulativeMetrics are metrics that should be summed (not averaged) when aggregating.
@@ -361,19 +359,20 @@ func (db *DB) GetCorrelation(ctx context.Context, xMetric, yMetric string, start
 	if isCumulative(yMetric) {
 		yAgg = "SUM"
 	}
-	// For correlation, use the priority for the X metric's category.
-	priorities := db.ResolveSourcePriorityForMetric(ctx, userID, xMetric)
-	priorityExpr := sourcePriorityCaseSQL(priorities)
-	// For cumulative metrics, skip the 5-minute dedup ROW_NUMBER (emit constant
-	// rn=1) so high-frequency single-source samples are not collapsed. See
-	// dedupCTE for the full rationale.
-	xRnExpr := fmt.Sprintf("ROW_NUMBER() OVER (PARTITION BY time_bucket('5 minutes', time) ORDER BY %s)", priorityExpr)
+	// For cumulative metrics, use DENSE_RANK by source priority to keep all rows
+	// from the best source (preserving high-frequency samples) while excluding
+	// lower-priority sources that would double-count.
+	xPriorities := db.ResolveSourcePriorityForMetric(ctx, userID, xMetric)
+	xPriorityExpr := sourcePriorityCaseSQL(xPriorities)
+	xRnExpr := fmt.Sprintf("ROW_NUMBER() OVER (PARTITION BY time_bucket('5 minutes', time) ORDER BY %s)", xPriorityExpr)
 	if isCumulative(xMetric) {
-		xRnExpr = "1"
+		xRnExpr = fmt.Sprintf("DENSE_RANK() OVER (ORDER BY %s)", xPriorityExpr)
 	}
-	yRnExpr := fmt.Sprintf("ROW_NUMBER() OVER (PARTITION BY time_bucket('5 minutes', time) ORDER BY %s)", priorityExpr)
+	yPriorities := db.ResolveSourcePriorityForMetric(ctx, userID, yMetric)
+	yPriorityExpr := sourcePriorityCaseSQL(yPriorities)
+	yRnExpr := fmt.Sprintf("ROW_NUMBER() OVER (PARTITION BY time_bucket('5 minutes', time) ORDER BY %s)", yPriorityExpr)
 	if isCumulative(yMetric) {
-		yRnExpr = "1"
+		yRnExpr = fmt.Sprintf("DENSE_RANK() OVER (ORDER BY %s)", yPriorityExpr)
 	}
 	query := fmt.Sprintf(
 		`WITH x_deduped AS (
