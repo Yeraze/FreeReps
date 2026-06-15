@@ -28,15 +28,21 @@ export default function Layout({ children }: { children: ReactNode }) {
             <h1 className="text-xl font-bold text-zinc-100 tracking-tight">
               FreeReps
             </h1>
-            {version && version !== "dev" && !version.startsWith("edge-") && (
-              <a
-                href={`https://github.com/meltforce/FreeReps/releases/tag/${version}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-zinc-500 font-mono hover:text-zinc-300 transition-colors"
-              >
-                v{version}
-              </a>
+            {version && (
+              version !== "dev" && !version.startsWith("edge-") ? (
+                <a
+                  href={`https://github.com/meltforce/FreeReps/releases/tag/${version}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-zinc-500 font-mono hover:text-zinc-300 transition-colors"
+                >
+                  v{version}
+                </a>
+              ) : (
+                <span className="text-xs text-zinc-600 font-mono">
+                  {version}
+                </span>
+              )
             )}
           </NavLink>
 
@@ -79,6 +85,11 @@ export default function Layout({ children }: { children: ReactNode }) {
         </div>
       </header>
       <main className="max-w-7xl mx-auto px-4 py-6">{children}</main>
+      <footer className="border-t border-zinc-800 py-4 text-center">
+        <span className="text-xs text-zinc-600 font-mono">
+          FreeReps {version ? `v${version}` : ""}
+        </span>
+      </footer>
     </div>
   );
 }
