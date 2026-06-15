@@ -103,6 +103,24 @@ func isCumulative(metric string) bool {
 	return strings.HasPrefix(metric, "dietary_")
 }
 
+// isDietarySnapshot returns true for dietary_* metrics which are cumulative
+// daily snapshots (Cronometer re-uploads the running total) — use MAX, not SUM.
+func isDietarySnapshot(metric string) bool {
+	return strings.HasPrefix(metric, "dietary_")
+}
+
+// cumulativeAggFunc returns the correct aggregate function for a metric:
+// MAX for dietary snapshots, SUM for additive cumulative, AVG for everything else.
+func cumulativeAggFunc(metric string) string {
+	if isDietarySnapshot(metric) {
+		return "MAX"
+	}
+	if isCumulative(metric) {
+		return "SUM"
+	}
+	return "AVG"
+}
+
 // maxParamsPerBatch is the PostgreSQL extended protocol parameter limit (65535)
 // divided by 12 parameters per row, with headroom.
 const maxRowsPerBatch = 5000
@@ -188,13 +206,10 @@ func (db *DB) GetLatestMetrics(ctx context.Context, userID int) ([]models.Health
 
 // GetTimeSeries returns aggregated time-series data using time_bucket.
 // bucketSize should be a PostgreSQL interval like '1 day', '1 hour'.
-// Cumulative metrics (active_energy, basal_energy_burned, apple_exercise_time)
-// use SUM; all others use AVG.
+// Additive cumulative metrics use SUM; dietary snapshot metrics use MAX;
+// all others use AVG.
 func (db *DB) GetTimeSeries(ctx context.Context, metricName string, start, end time.Time, bucketSize string, userID int) ([]TimeSeriesPoint, error) {
-	aggFunc := "AVG"
-	if isCumulative(metricName) {
-		aggFunc = "SUM"
-	}
+	aggFunc := cumulativeAggFunc(metricName)
 	priorities := db.ResolveSourcePriorityForMetric(ctx, userID, metricName)
 	cte := dedupCTE(priorities, "$2", "$3", "$4", "$5", isCumulative(metricName))
 	query := fmt.Sprintf(
@@ -265,7 +280,11 @@ func (db *DB) GetDailySums(ctx context.Context, userID int, metricNames []string
 	query := fmt.Sprintf(
 		`%sSELECT metric_name,
 		        COALESCE(MAX(units), '') as units,
-		        COALESCE(SUM(COALESCE(qty, avg_val, 0)), 0) as total
+		        COALESCE(
+		          CASE WHEN metric_name LIKE 'dietary_%%'
+		               THEN MAX(COALESCE(qty, avg_val, 0))
+		               ELSE SUM(COALESCE(qty, avg_val, 0))
+		          END, 0) as total
 		 FROM deduped
 		 WHERE rn = 1
 		   AND time >= (SELECT date_trunc('day', MAX(time)) FROM deduped WHERE rn = 1)
@@ -299,17 +318,10 @@ type MetricStats struct {
 	Count  int64    `json:"count"`
 }
 
-// buildMetricStatsQuery returns the SQL for GetMetricStats. For cumulative
-// metrics (e.g. step_count, active_energy) the headline aggregate is SUM over
-// the range; for all others it is AVG. MIN/MAX/STDDEV/COUNT are unchanged
-// (still useful for cumulative — e.g. max single-bin value, sample count).
-// Mirrors the cumulativeMetrics branching already used by GetTimeSeries and
-// GetCorrelation.
+// buildMetricStatsQuery returns the SQL for GetMetricStats. Additive cumulative
+// metrics use SUM; dietary snapshot metrics use MAX; all others use AVG.
 func buildMetricStatsQuery(metricName string, priorities []string) string {
-	agg := "AVG"
-	if isCumulative(metricName) {
-		agg = "SUM"
-	}
+	agg := cumulativeAggFunc(metricName)
 	cte := dedupCTE(priorities, "$1", "$2", "$3", "$4", isCumulative(metricName))
 	return fmt.Sprintf(
 		`%sSELECT %s(COALESCE(qty, avg_val)),
@@ -321,7 +333,7 @@ func buildMetricStatsQuery(metricName string, priorities []string) string {
 }
 
 // GetMetricStats returns aggregate statistics for a metric over a time range.
-// The "avg" field holds a SUM for cumulative metrics; see buildMetricStatsQuery.
+// The "avg" field holds SUM (additive) or MAX (dietary snapshot) for cumulative metrics.
 func (db *DB) GetMetricStats(ctx context.Context, metricName string, start, end time.Time, userID int) (*MetricStats, error) {
 	priorities := db.ResolveSourcePriorityForMetric(ctx, userID, metricName)
 	query := buildMetricStatsQuery(metricName, priorities)
@@ -349,16 +361,10 @@ type CorrelationResult struct {
 }
 
 // GetCorrelation joins two metrics on time buckets and computes their Pearson correlation.
-// Uses SUM for cumulative metrics, AVG for all others.
+// Uses SUM for additive cumulative, MAX for dietary snapshots, AVG for all others.
 func (db *DB) GetCorrelation(ctx context.Context, xMetric, yMetric string, start, end time.Time, bucket string, userID int) (*CorrelationResult, error) {
-	xAgg := "AVG"
-	if isCumulative(xMetric) {
-		xAgg = "SUM"
-	}
-	yAgg := "AVG"
-	if isCumulative(yMetric) {
-		yAgg = "SUM"
-	}
+	xAgg := cumulativeAggFunc(xMetric)
+	yAgg := cumulativeAggFunc(yMetric)
 	// For cumulative metrics, use DENSE_RANK by source priority to keep all rows
 	// from the best source (preserving high-frequency samples) while excluding
 	// lower-priority sources that would double-count.

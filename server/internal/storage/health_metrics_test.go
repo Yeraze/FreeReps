@@ -116,16 +116,19 @@ func TestBuildMetricStatsQueryCumulative(t *testing.T) {
 }
 
 // TestNutritionMetricsCumulative verifies that dietary_* metrics are recognized
-// as cumulative, so they use SUM and DENSE_RANK source dedup.
+// as cumulative snapshots — they use MAX (not SUM) and DENSE_RANK source dedup.
 func TestNutritionMetricsCumulative(t *testing.T) {
 	for _, metric := range []string{"dietary_protein", "dietary_fiber", "dietary_carbohydrates", "dietary_fat_total", "dietary_energy_consumed"} {
 		t.Run(metric, func(t *testing.T) {
 			if !isCumulative(metric) {
 				t.Errorf("expected %q to be cumulative", metric)
 			}
+			if !isDietarySnapshot(metric) {
+				t.Errorf("expected %q to be a dietary snapshot", metric)
+			}
 			sql := buildMetricStatsQuery(metric, nil)
-			if !strings.Contains(sql, "SUM(COALESCE(qty, avg_val))") {
-				t.Errorf("expected SUM aggregate for nutrition metric %q, got:\n%s", metric, sql)
+			if !strings.Contains(sql, "MAX(COALESCE(qty, avg_val))") {
+				t.Errorf("expected MAX aggregate for dietary snapshot metric %q, got:\n%s", metric, sql)
 			}
 			if !strings.Contains(sql, "DENSE_RANK()") {
 				t.Errorf("expected DENSE_RANK() source dedup for nutrition metric %q, got:\n%s", metric, sql)
