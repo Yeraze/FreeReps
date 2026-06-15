@@ -116,7 +116,7 @@ func TestBuildMetricStatsQueryCumulative(t *testing.T) {
 }
 
 // TestNutritionMetricsCumulative verifies that dietary_* metrics are recognized
-// as cumulative, so they use SUM and skip the 5-minute dedup.
+// as cumulative, so they use SUM and DENSE_RANK source dedup.
 func TestNutritionMetricsCumulative(t *testing.T) {
 	for _, metric := range []string{"dietary_protein", "dietary_fiber", "dietary_carbohydrates", "dietary_fat_total", "dietary_energy_consumed"} {
 		t.Run(metric, func(t *testing.T) {
@@ -127,8 +127,8 @@ func TestNutritionMetricsCumulative(t *testing.T) {
 			if !strings.Contains(sql, "SUM(COALESCE(qty, avg_val))") {
 				t.Errorf("expected SUM aggregate for nutrition metric %q, got:\n%s", metric, sql)
 			}
-			if !strings.Contains(sql, "1 AS rn") {
-				t.Errorf("expected '1 AS rn' (no dedup) for nutrition metric %q, got:\n%s", metric, sql)
+			if !strings.Contains(sql, "DENSE_RANK()") {
+				t.Errorf("expected DENSE_RANK() source dedup for nutrition metric %q, got:\n%s", metric, sql)
 			}
 		})
 	}
@@ -150,14 +150,11 @@ func TestBuildMetricStatsQueryNonCumulative(t *testing.T) {
 	}
 }
 
-// TestBuildMetricStatsQueryCumulativeSkipsDedup verifies that for cumulative
-// metrics the generated stats query does NOT include the ROW_NUMBER-based
-// 5-minute dedup. HAE emits ~11K per-second rate samples for step_count in a
-// single day; filtering by ROW_NUMBER()=1 across 5-minute buckets would drop
-// ~99% of them and collapse the daily total to ~1% of reality. The 5-minute
-// dedup exists to break ties between competing sources (Oura/Apple/HAE) on
-// the same wrist-moment, not to thin out high-frequency single-source streams.
-func TestBuildMetricStatsQueryCumulativeSkipsDedup(t *testing.T) {
+// TestBuildMetricStatsQueryCumulativeUsesSourceDedup verifies that cumulative
+// metrics use DENSE_RANK by source priority (not ROW_NUMBER by time bucket).
+// This keeps all rows from the best source while excluding lower-priority
+// sources that would double-count the same activity.
+func TestBuildMetricStatsQueryCumulativeUsesSourceDedup(t *testing.T) {
 	for _, metric := range []string{"step_count", "active_energy", "distance_walking_running", "flights_climbed"} {
 		t.Run(metric, func(t *testing.T) {
 			sql := buildMetricStatsQuery(metric, []string{"Oura", ""})
@@ -167,10 +164,11 @@ func TestBuildMetricStatsQueryCumulativeSkipsDedup(t *testing.T) {
 			if strings.Contains(sql, "PARTITION BY time_bucket") {
 				t.Errorf("expected no time_bucket partition for cumulative metric %q, got:\n%s", metric, sql)
 			}
-			// CTE should still be present and emit a constant rn so the
-			// caller's WHERE rn = 1 predicate is a no-op.
-			if !strings.Contains(sql, "1 AS rn") {
-				t.Errorf("expected '1 AS rn' constant in CTE for cumulative metric %q, got:\n%s", metric, sql)
+			if !strings.Contains(sql, "DENSE_RANK()") {
+				t.Errorf("expected DENSE_RANK() source dedup for cumulative metric %q, got:\n%s", metric, sql)
+			}
+			if !strings.Contains(sql, "LIKE 'Oura%' THEN 1") {
+				t.Errorf("expected source priority ordering for cumulative metric %q, got:\n%s", metric, sql)
 			}
 		})
 	}
@@ -195,14 +193,14 @@ func TestBuildMetricStatsQueryNonCumulativeKeepsDedup(t *testing.T) {
 }
 
 // TestDedupCTECumulativeFlag verifies the isCumulative flag swaps the CTE
-// body between the ROW_NUMBER form (false) and the constant-rn form (true).
+// body between ROW_NUMBER by time bucket (false) and DENSE_RANK by source (true).
 func TestDedupCTECumulativeFlag(t *testing.T) {
 	cumulativeCTE := dedupCTE([]string{"Oura", ""}, "$2", "$3", "$4", "$5", true)
 	if strings.Contains(cumulativeCTE, "ROW_NUMBER()") {
 		t.Errorf("isCumulative=true should not emit ROW_NUMBER, got:\n%s", cumulativeCTE)
 	}
-	if !strings.Contains(cumulativeCTE, "1 AS rn") {
-		t.Errorf("isCumulative=true should emit constant '1 AS rn', got:\n%s", cumulativeCTE)
+	if !strings.Contains(cumulativeCTE, "DENSE_RANK()") {
+		t.Errorf("isCumulative=true should emit DENSE_RANK() for source dedup, got:\n%s", cumulativeCTE)
 	}
 
 	normalCTE := dedupCTE([]string{"Oura", ""}, "$2", "$3", "$4", "$5", false)
@@ -211,15 +209,16 @@ func TestDedupCTECumulativeFlag(t *testing.T) {
 	}
 }
 
-// TestDedupCTEMultiMetric verifies the multi-metric CTE emits a constant rn=1
-// (no dedup), since all callers pass only cumulative metrics which should
-// retain every row.
+// TestDedupCTEMultiMetric verifies the multi-metric CTE uses DENSE_RANK per
+// metric to keep all rows from the best source while excluding lower-priority
+// sources.
 func TestDedupCTEMultiMetric(t *testing.T) {
 	cte := dedupCTEMultiMetric([]string{"Oura", ""}, "$1", "$2,$3")
 
 	checks := []string{
 		"WITH deduped AS",
-		"1 AS rn",
+		"DENSE_RANK()",
+		"PARTITION BY metric_name",
 		"user_id = $1",
 		"metric_name IN ($2,$3)",
 	}
