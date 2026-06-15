@@ -50,6 +50,12 @@ var defaultVisibleMetrics = map[string]bool{
 	"flights_climbed":         true,
 	"sleep_analysis":          true,
 	"blood_glucose":           true,
+	// Nutrition (key macros visible by default)
+	"dietary_energy_consumed": true,
+	"dietary_protein":         true,
+	"dietary_carbohydrates":   true,
+	"dietary_fat_total":       true,
+	"dietary_fiber":           true,
 	// Oura (visible by default if user has data)
 	"oura_readiness_score": true,
 	"oura_sleep_score":     true,
