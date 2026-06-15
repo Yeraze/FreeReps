@@ -1,0 +1,3 @@
+-- Down migration is a no-op.
+-- The dedup removed exact-duplicate rows; there is no way to restore them
+-- and no reason to — the unique indexes already prevent new duplicates.
