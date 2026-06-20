@@ -214,7 +214,7 @@ export default function OuraTab() {
         </p>
         {status.expires_at && (
           <p className="text-xs text-zinc-500">
-            Token expires: {new Date(status.expires_at).toLocaleString()}
+            Token expires: {new Date(status.expires_at).toLocaleString("en-US")}
           </p>
         )}
       </div>

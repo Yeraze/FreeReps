@@ -12,13 +12,13 @@ export const axisValues24h: uPlot.Axis.Values = (
     const d = new Date(v * 1000);
     const span = vals.length > 1 ? Math.abs(vals[1] - vals[0]) : 86400;
     if (span < 86400) {
-      return d.toLocaleString("de-DE", {
+      return d.toLocaleString("en-US", {
         hour: "2-digit",
         minute: "2-digit",
         hour12: false,
       });
     }
-    return d.toLocaleDateString("de-DE", {
+    return d.toLocaleDateString("en-US", {
       day: "2-digit",
       month: "2-digit",
     });

@@ -84,7 +84,7 @@ export default function SleepPage() {
         <div className="space-y-4">
           <h3 className="text-sm font-medium text-zinc-400">
             Last Night &mdash;{" "}
-            {new Date(lastSession.Date).toLocaleDateString(undefined, {
+            {new Date(lastSession.Date).toLocaleDateString("en-US", {
               weekday: "short",
               month: "short",
               day: "numeric",

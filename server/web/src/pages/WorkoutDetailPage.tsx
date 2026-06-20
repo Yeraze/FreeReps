@@ -63,7 +63,7 @@ export default function WorkoutDetailPage() {
       <div>
         <h2 className="text-xl font-semibold text-zinc-100">{getWorkoutDisplayName(w)}</h2>
         <div className="text-sm text-zinc-500 mt-1">
-          {new Date(w.StartTime).toLocaleDateString("de-DE", {
+          {new Date(w.StartTime).toLocaleDateString("en-US", {
             weekday: "long",
             year: "numeric",
             month: "long",

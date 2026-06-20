@@ -39,7 +39,7 @@ export default function StatsTab() {
       label: "Data Range",
       value:
         stats.earliest_data && stats.latest_data
-          ? `${new Date(stats.earliest_data).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })} — ${new Date(stats.latest_data).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}`
+          ? `${new Date(stats.earliest_data).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })} — ${new Date(stats.latest_data).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}`
           : "—",
     },
   ];

@@ -107,7 +107,7 @@ export default function SleepHistoryChart({ sessions, stages, start, end }: Prop
     // Date range label
     const firstDate = new Date(start);
     const lastDate = new Date(end);
-    const dateRangeLabel = `${firstDate.toLocaleDateString("de-DE", { day: "numeric", month: "short" })} – ${lastDate.toLocaleDateString("de-DE", { day: "numeric", month: "short", year: "numeric" })}`;
+    const dateRangeLabel = `${firstDate.toLocaleDateString("en-US", { day: "numeric", month: "short" })} – ${lastDate.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}`;
 
     return {
       sessionsWithStages,
@@ -185,7 +185,7 @@ export default function SleepHistoryChart({ sessions, stages, start, end }: Prop
               // Date label
               const showLabel = colIdx % labelInterval === 0;
               const d = new Date(date + "T00:00:00");
-              const dayLabel = d.toLocaleDateString(undefined, {
+              const dayLabel = d.toLocaleDateString("en-US", {
                 weekday: columnCount <= 14 ? "short" : undefined,
                 day: "numeric",
               });
