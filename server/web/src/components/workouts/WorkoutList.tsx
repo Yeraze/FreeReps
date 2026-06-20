@@ -106,7 +106,7 @@ function WorkoutListView({ workouts }: { workouts: Workout[] }) {
   const groups: { date: string; workouts: Workout[] }[] = [];
   let currentDate = "";
   for (const w of workouts) {
-    const d = new Date(w.StartTime).toLocaleDateString("de-DE", {
+    const d = new Date(w.StartTime).toLocaleDateString("en-US", {
       weekday: "short",
       day: "numeric",
       month: "short",
@@ -134,7 +134,7 @@ function WorkoutListView({ workouts }: { workouts: Workout[] }) {
               className="flex items-center gap-4 px-3 py-2.5 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors text-sm"
             >
               <span className="text-zinc-500 text-xs w-12 shrink-0">
-                {new Date(w.StartTime).toLocaleTimeString("de-DE", {
+                {new Date(w.StartTime).toLocaleTimeString("en-US", {
                   hour: "2-digit",
                   minute: "2-digit",
                   hour12: false,

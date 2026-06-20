@@ -55,7 +55,7 @@ export default function ImportLogsTab() {
               {log.status}
             </span>
             <span className="text-xs text-zinc-500">
-              {new Date(log.created_at).toLocaleString()}
+              {new Date(log.created_at).toLocaleString("en-US")}
             </span>
             <span className="text-xs text-zinc-600">
               {formatDuration(log.duration_ms)}
