@@ -55,7 +55,10 @@ var defaultVisibleMetrics = map[string]bool{
 	"dietary_protein":         true,
 	"dietary_carbohydrates":   true,
 	"dietary_fat_total":       true,
-	"dietary_fiber":           true,
+	"dietary_fiber":                true,
+	"dietary_fat_saturated":        true,
+	"dietary_fat_monounsaturated":  true,
+	"dietary_fat_polyunsaturated":  true,
 	// Oura (visible by default if user has data)
 	"oura_readiness_score": true,
 	"oura_sleep_score":     true,

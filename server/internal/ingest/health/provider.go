@@ -114,6 +114,7 @@ var haeNutritionAliases = map[string]string{
 	"cholesterol":         "dietary_cholesterol",
 	"chromium":            "dietary_chromium",
 	"copper":              "dietary_copper",
+	"dietary_energy":      "dietary_energy_consumed",
 	"energy_consumed":     "dietary_energy_consumed",
 	"fat_monounsaturated": "dietary_fat_monounsaturated",
 	"fat_polyunsaturated": "dietary_fat_polyunsaturated",

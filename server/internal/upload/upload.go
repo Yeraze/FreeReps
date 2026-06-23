@@ -434,9 +434,12 @@ var TCPMetrics = []TCPMetric{
 	// "basal_energy_burned" — skipped: ~8 MB/day of estimated BMR data, not useful
 	{Name: "apple_exercise_time", Aggregate: true},
 	{Name: "dietary_protein", Aggregate: true},
-	{Name: "dietary_energy_consumed", Aggregate: true},
+	{Name: "dietary_energy", Aggregate: true},
 	{Name: "dietary_carbohydrates", Aggregate: true},
 	{Name: "dietary_fat_total", Aggregate: true},
+	{Name: "dietary_fat_saturated", Aggregate: true},
+	{Name: "dietary_fat_monounsaturated", Aggregate: true},
+	{Name: "dietary_fat_polyunsaturated", Aggregate: true},
 	{Name: "dietary_sugar", Aggregate: true},
 	{Name: "dietary_fiber", Aggregate: true},
 	{Name: "dietary_sodium", Aggregate: true},

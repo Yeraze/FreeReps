@@ -17,6 +17,7 @@ var cumulativeMetrics = []string{
 	"dietary_energy_consumed", "dietary_protein", "dietary_carbohydrates",
 	"dietary_fat_total", "dietary_fiber", "dietary_sugar",
 	"dietary_sodium", "dietary_cholesterol", "dietary_fat_saturated",
+	"dietary_fat_monounsaturated", "dietary_fat_polyunsaturated",
 	"dietary_caffeine", "dietary_water",
 }
 
